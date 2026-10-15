@@ -5,12 +5,12 @@
 class Scii < Formula
   desc "ASCII-native social network for the terminal"
   homepage "https://scii.io"
-  version "0.2.0"
+  version "0.3.1"
 
   on_macos do
     if Hardware::CPU.arm?
-      url "https://github.com/sciiio/scii-releases/releases/download/v0.2.0/scii-darwin-arm64"
-      sha256 "32cca2fd65e805713e53e56d6da3bd26c9dc048e4f95ea711c4e1a96999c2782"
+      url "https://github.com/sciiio/scii-releases/releases/download/v0.3.1/scii-darwin-arm64"
+      sha256 "988c2336a6bc213fd79237f9340a86d93f372e9b71a0e639aad8060b125c3d30"
 
       def install
         bin.install "scii-darwin-arm64" => "scii"
@@ -20,8 +20,8 @@ class Scii < Formula
 
   on_linux do
     if Hardware::CPU.intel?
-      url "https://github.com/sciiio/scii-releases/releases/download/v0.2.0/scii-linux-x64"
-      sha256 "743683f2b29b5389b2f76dca51e4db3f0bff9d0daca889b07c899e476270d74f"
+      url "https://github.com/sciiio/scii-releases/releases/download/v0.3.1/scii-linux-x64"
+      sha256 "1131de870f87b7579ac40936c24dca16494d9eeaeef0cc95f5a85c7412825b6b"
 
       def install
         bin.install "scii-linux-x64" => "scii"
