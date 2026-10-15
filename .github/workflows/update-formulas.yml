@@ -1,0 +1,143 @@
+name: Update formulas
+
+# Regenerate Formula/scii.rb for a scii release: download the published assets, compute
+# SHA256, and commit.
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "scii release version, without the leading v (e.g. 0.2.0)"
+        required: true
+        type: string
+      source_repo:
+        description: "Repo that publishes the release assets"
+        default: "sciiio/scii-releases"
+        required: false
+        type: string
+  # Fired automatically by the scii publish workflow after a public release.
+  # client_payload: { version: "0.2.0", source_repo: "sciiio/scii-releases" }
+  repository_dispatch:
+    types: [release]
+
+permissions:
+  contents: write
+
+jobs:
+  bump:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Resolve inputs
+        id: in
+        run: |
+          set -euo pipefail
+          if [ "${{ github.event_name }}" = "repository_dispatch" ]; then
+            V="${{ github.event.client_payload.version }}"
+            REPO="${{ github.event.client_payload.source_repo }}"
+          else
+            V="${{ inputs.version }}"
+            REPO="${{ inputs.source_repo }}"
+          fi
+          [ -n "$REPO" ] || REPO="sciiio/scii-releases"
+          if [ -z "$V" ]; then
+            echo "no version provided" >&2
+            exit 1
+          fi
+          echo "version=$V" >> "$GITHUB_OUTPUT"
+          echo "source_repo=$REPO" >> "$GITHUB_OUTPUT"
+
+      - name: Download assets and compute SHA256
+        id: shas
+        run: |
+          set -euo pipefail
+          V="${{ steps.in.outputs.version }}"
+          REPO="${{ steps.in.outputs.source_repo }}"
+          BASE="https://github.com/${REPO}/releases/download/v${V}"
+          mkdir -p /tmp/scii
+          fetch_sha() {
+            local name="$1"
+            curl -fsSL -o "/tmp/scii/${name}" "${BASE}/${name}"
+            sha256sum "/tmp/scii/${name}" | awk '{print $1}'
+          }
+          echo "darwin_arm64=$(fetch_sha scii-darwin-arm64)" >> "$GITHUB_OUTPUT"
+          echo "linux_x64=$(fetch_sha scii-linux-x64)" >> "$GITHUB_OUTPUT"
+
+      - name: Regenerate formula
+        env:
+          VERSION: ${{ steps.in.outputs.version }}
+          REPO: ${{ steps.in.outputs.source_repo }}
+          DARWIN_ARM64: ${{ steps.shas.outputs.darwin_arm64 }}
+          LINUX_X64: ${{ steps.shas.outputs.linux_x64 }}
+        run: |
+          set -euo pipefail
+          BASE="https://github.com/${REPO}/releases/download/v${VERSION}"
+          mkdir -p Formula
+
+          cat > Formula/scii.rb << 'FORMULA'
+          # typed: false
+          # frozen_string_literal: true
+
+          # scii — the ASCII-native social network, in your terminal.
+          class Scii < Formula
+            desc "ASCII-native social network for the terminal"
+            homepage "https://scii.io"
+            version "VERSION_PLACEHOLDER"
+
+            on_macos do
+              if Hardware::CPU.arm?
+                url "BASE_PLACEHOLDER/scii-darwin-arm64"
+                sha256 "DARWIN_ARM64_PLACEHOLDER"
+
+                def install
+                  bin.install "scii-darwin-arm64" => "scii"
+                end
+              end
+            end
+
+            on_linux do
+              if Hardware::CPU.intel?
+                url "BASE_PLACEHOLDER/scii-linux-x64"
+                sha256 "LINUX_X64_PLACEHOLDER"
+
+                def install
+                  bin.install "scii-linux-x64" => "scii"
+                end
+              end
+            end
+
+            def caveats
+              <<~EOS
+                Sign in with Hypery (scan the QR code with your phone):
+                  scii login
+                Then open the feed:
+                  scii
+              EOS
+            end
+
+            test do
+              assert_match "usage: scii", shell_output("#{bin}/scii help")
+            end
+          end
+          FORMULA
+
+          sed -i.bak \
+            -e "s|VERSION_PLACEHOLDER|${VERSION}|g" \
+            -e "s|BASE_PLACEHOLDER|${BASE}|g" \
+            -e "s|DARWIN_ARM64_PLACEHOLDER|${DARWIN_ARM64}|g" \
+            -e "s|LINUX_X64_PLACEHOLDER|${LINUX_X64}|g" \
+            Formula/scii.rb
+          rm -f Formula/scii.rb.bak
+
+      - name: Commit and push
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add Formula/scii.rb
+          if git diff --staged --quiet; then
+            echo "No formula changes"
+          else
+            git commit -m "scii ${{ steps.in.outputs.version }}"
+            git push
+          fi
